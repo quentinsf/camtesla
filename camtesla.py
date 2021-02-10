@@ -16,9 +16,17 @@ API_ROOT = f"{API_HOST}/api/1"
 CLIENT_ID = "81527cff06843c8634fdc09e8ac0abefb46ac849f38fe1e431c2ef2106796384"
 CLIENT_SECRET = "c7257eb71a564034f9419ee651c7d0e5f7aa6bfbd18bafb5c5c033b093bb2fa3"
 
+# TODO: Replace the UA with "CamTesla" ?
+UA = "Mozilla/5.0 (Linux; Android 10; Pixel 3 Build/QQ2A.200305.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/85.0.4183.81 Mobile Safari/537.36"
+X_TESLA_USER_AGENT = "TeslaApp/3.10.9-433/adff2e065/android/10"
+
 # default timeout in seconds
 # Car can take a long time to wake up and respond.
 _DEFAULT_TIMEOUT = 30
+
+
+# name of default file to store the long-lived access token
+_DEFAULT_ACCESS_TOKEN_FILE = "tesla_access_token.json"
 
 
 class Resource(object):
@@ -43,9 +51,11 @@ class Resource(object):
         # or with the specially-handled keyword "http_method".
         kwargs = {(k[:-1] if k.endswith('_') else k): v for k, v in kwargs.items()}
 
-        auth = {"Authorization": f"Bearer {self.access_token}"}
+        auth = {"Authorization": f"bearer {self.access_token}"}
         headers = auth.copy()
-        headers["User-Agent"] = "CamTesla"
+        # headers["User-Agent"] = "CamTesla"
+        headers["user-agent"] = UA
+        headers["x-tesla-user-agent"] = X_TESLA_USER_AGENT
 
         if http_method == 'post':
             r = requests.post(url, params=auth, headers=headers, json=kwargs, timeout=self.timeout)
@@ -104,6 +114,32 @@ class Server(Resource):
         # self.token_creation = data["created_at"]
         # self.expires_at = self.token_creation + data["expires_in"]
 
+
+# Start of a Server using OAuth2 and multi-factor authentication using
+# a long-lived authentication token that will most likely need to be
+# stored in a file and reused
+class ServerOAuth2(Resource):
+    # TODO: this currently relies on already having an access token stored
+    # Currently getting a long-lived token that might require multi-factor
+    # authentication using:
+    #   python3 tesla.py -e 'Your Email' -p 'Your Password' -f 'tesla_access_token.json'
+    # from:
+    #   https://github.com/enode-engineering/tesla-oauth2
+    def __init__(
+            self,
+            tokenfile: str = _DEFAULT_ACCESS_TOKEN_FILE,
+            timeout: int = _DEFAULT_TIMEOUT
+    ):
+        with open(tokenfile) as json_file:
+            self.fulltoken = json.load(json_file)
+        # TODO: check when the access token expires and renew
+        super().__init__(
+            API_ROOT,
+            self.fulltoken['access_token'],
+            timeout=timeout
+        )
+        
+    
 
 class TeslaException(Exception):
     pass
